@@ -48,7 +48,7 @@ fn main() {
     let npc = Object::new(SCREEN_WIDTH/2-5, SCREEN_HEIGHT/2, '@', YELLOW);
     let mut objects = [player, npc];
 
-    let game = Game { map: generate_map(&mut objects[0]), };
+    let mut game = Game { map: generate_map(&mut objects[0]), };
 
     for y in 0..MAP_HEIGHT {
         for x in 0..MAP_WIDTH {
@@ -66,7 +66,7 @@ fn main() {
         tcod.con.clear();
 
         let fov_recompute = previous_player_position != (objects[0].x, objects[0].y);
-        render_all(&mut tcod, &game, &objects, fov_recompute);
+        render_all(&mut tcod, &mut game, &objects, fov_recompute);
         tcod.root.flush();
         tcod.root.wait_for_keypress(true);
         
@@ -145,7 +145,7 @@ fn generate_map(player: &mut Object) -> Map {
     map
 }
 
-fn render_all(tcod: &mut Tcod, game: &Game, objects: &[Object], fov_recompute: bool) {
+fn render_all(tcod: &mut Tcod, game: &mut Game, objects: &[Object], fov_recompute: bool) {
 
     if fov_recompute {
         let player = &objects[0];
@@ -168,7 +168,13 @@ fn render_all(tcod: &mut Tcod, game: &Game, objects: &[Object], fov_recompute: b
                 (true, true) => COLOR_LIGHT_WALL,
                 (true, false) => COLOR_LIGHT_GROUND,
             };
-            tcod.con.set_char_background(x, y, color, BackgroundFlag::Set);
+            let explored = &mut game.map[x as usize][y as usize].explored;
+            if visible {
+                *explored = true;
+            }
+            if *explored {
+                tcod.con.set_char_background(x, y, color, BackgroundFlag::Set);
+            }
         }
     }
 
@@ -211,12 +217,14 @@ impl Object {
 #[derive(Clone, Copy, Debug)]
 struct Tile {
     blocked: bool,
+    explored: bool,
     block_sight: bool,
 }
 impl Tile {
     pub fn empty() -> Self {
         Tile {
             blocked: false,
+            explored: false,
             block_sight: false,
         }
     }
@@ -224,6 +232,7 @@ impl Tile {
     pub fn wall() -> Self {
         Tile {
             blocked: true,
+            explored: false,
             block_sight: true,
         }
     }
