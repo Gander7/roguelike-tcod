@@ -73,36 +73,46 @@ fn main() {
         tcod.root.wait_for_keypress(true);
         
         let player = &mut objects[PLAYER];
-        previous_player_position = (player.x, player.y);
-        let exit = handle_keys(&mut tcod, &game, &mut objects);
-        if exit {
+        previous_player_position = objects[PLAYER].pos(); 
+        let player_action = handle_keys(&mut tcod, &game, &mut objects);
+        if player_action == PlayerAction::Exit {
             break;
+        }
+
+        if objects[PLAYER].alive && player_action != PlayerAction::DidntTakeTurn {
+            for object in &objects {
+                if (object as *const _) != (&objects[PLAYER] as *const _) {
+                    println!("The {} growls", object.name);
+                }
+            }
         }
     }
 }
 
-fn handle_keys(tcod: &mut Tcod, game: &Game, objects: &mut Vec<Object>) -> bool {
+fn handle_keys(tcod: &mut Tcod, game: &Game, objects: &mut Vec<Object>) -> PlayerAction {
     use tcod::input::Key;
     use tcod::input::KeyCode::*;
+    use PlayerAction::*;
 
     let key = tcod.root.wait_for_keypress(true); 
-    match key {
+    let player_alive = objects[PLAYER].alive;
+    match (key, key.text(), player_alive) {
         // Movement Keys
-        Key { code: Up, .. } => move_by(PLAYER,0,-1, &game.map,objects),
-        Key { code: Down, .. } => move_by(PLAYER,0,1, &game.map,objects),
-        Key { code: Left, .. } => move_by(PLAYER,-1,0, &game.map,objects),
-        Key { code: Right, .. } => move_by(PLAYER,1,0, &game.map,objects),
+        (Key { code: Up, .. }, _, true,) => move_or_attack(0,-1, &game,objects),
+        (Key { code: Down, .. }, _, true,) => move_or_attack(0,1, &game,objects),
+        (Key { code: Left, .. }, _, true,) => move_or_attack(-1,0, &game,objects),
+        (Key { code: Right, .. }, _, true,) => move_or_attack(1,0, &game,objects),
 
-        Key { code: Enter, alt: true, .. } =>  { 
+        (Key { code: Enter, alt: true, .. }, _, _,) =>  { 
             let fullscreen = tcod.root.is_fullscreen();
             tcod.root.set_fullscreen(!fullscreen);
+            return DidntTakeTurn
         },
-        Key { code: Escape, .. } => return true,
+        (Key { code: Escape, .. }, _, _,) => return Exit,
 
-        _ => {}
+        _ => return DidntTakeTurn
     }
-
-    false
+    TookTurn
 }
 
 fn generate_map(objects: &mut Vec<Object>) -> Map {
@@ -235,6 +245,25 @@ fn move_by(id: usize, dx: i32, dy: i32, map: &Map, objects: &mut [Object]) {
     }
 }
 
+fn move_or_attack(dx: i32, dy: i32, game: &Game, objects: &mut [Object]) {
+    let x = objects[PLAYER].x + dx;
+    let y = objects[PLAYER].y + dy;
+
+    let target_id= objects.iter().position(|object| object.pos() == (x,y));
+
+    match target_id {
+        Some(target_id) => {
+            println!(
+                "The {} laughs at your puny efforts to attack him!",
+                objects[target_id].name
+            );
+        }
+        None => {
+            move_by(PLAYER, dx, dy, &game.map, objects);
+        }
+    }
+}
+
 
 #[derive(Clone, Copy, Debug)]
 struct Tile {
@@ -348,4 +377,11 @@ fn is_blocked(x: i32, y: i32, map: &Map, objects: &[Object]) -> bool {
 
     objects.iter()
         .any(|object| object.blocks && object.pos() == (x,y))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum PlayerAction {
+    TookTurn,
+    DidntTakeTurn,
+    Exit,
 }
