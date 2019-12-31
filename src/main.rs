@@ -8,11 +8,15 @@ const SCREEN_HEIGHT: i32 = 50;
 const PLAYER: usize = 0;
 
 const MAP_WIDTH: i32 = 80;
-const MAP_HEIGHT: i32 = 45;
+const MAP_HEIGHT: i32 = 43;
 const COLOR_DARK_GROUND: Color = Color { r:50, g:50, b:150 };
 const COLOR_LIGHT_GROUND: Color = Color { r:200, g:180, b:50 };
 const COLOR_DARK_WALL: Color = Color { r:0, g:0, b:100 };
 const COLOR_LIGHT_WALL: Color = Color { r:130, g:110, b:50 };
+
+const BAR_WIDTH: i32 = 20;
+const PANEL_HEIGHT: i32 = 7;
+const PANEL_Y: i32 = SCREEN_HEIGHT - PANEL_HEIGHT;
 
 const ROOM_MAX_SIZE: i32 = 10;
 const ROOM_MIN_SIZE: i32 = 6;
@@ -28,6 +32,7 @@ const TORCH_RADIUS: i32 = 10;
 struct Tcod {
     root: Root,
     con: Offscreen,
+    panel: Offscreen,
     fov: FovMap,
 }
 
@@ -42,7 +47,8 @@ fn main() {
     let mut tcod = Tcod { 
         root, 
         con: Offscreen::new(MAP_WIDTH, MAP_HEIGHT), 
-        fov: FovMap::new(MAP_WIDTH, MAP_HEIGHT) 
+        panel: Offscreen::new(SCREEN_WIDTH, PANEL_HEIGHT),
+        fov: FovMap::new(MAP_WIDTH, MAP_HEIGHT),
     };
     tcod::system::set_fps(LIMIT_FPS);
 
@@ -198,16 +204,6 @@ fn render_all(tcod: &mut Tcod, game: &mut Game, objects: &[Object], fov_recomput
         }
     }
 
-    tcod.root.set_default_foreground(WHITE);
-    if let Some(fighter) = objects[PLAYER].fighter {
-        tcod.root.print_ex(
-            1,
-            SCREEN_HEIGHT - 2,
-            BackgroundFlag::None,
-            TextAlignment::Left,
-            format!("HP: {}/{} ", fighter.hp, fighter.max_hp),
-        )
-    }
 
     blit(
         &tcod.con,
@@ -218,6 +214,33 @@ fn render_all(tcod: &mut Tcod, game: &mut Game, objects: &[Object], fov_recomput
         1.0,
         1.0,
     );
+
+    tcod.panel.set_default_background(BLACK);
+    tcod.panel.clear();
+
+    let hp = objects[PLAYER].fighter.map_or(0, |f| f.hp);
+    let max_hp = objects[PLAYER].fighter.map_or(0, |f| f.max_hp);
+    render_bar(
+        &mut tcod.panel,
+        1,
+        1,
+        BAR_WIDTH,
+        "HP",
+        hp,
+        max_hp,
+        LIGHT_RED,
+        DARKER_RED,
+    );
+
+    blit(
+        &tcod.panel,
+        (0,0),
+        (SCREEN_WIDTH, PANEL_HEIGHT),
+        &mut tcod.root,
+        (0, PANEL_Y),
+        1.0,
+        1.0,
+    )
 }
 
 #[derive(Debug)]
@@ -546,4 +569,39 @@ fn monster_death(monster: &mut Object) {
     monster.fighter = None;
     monster.ai = None;
     monster.name = format!("remains of {}", monster.name);
+}
+
+fn render_bar(
+    panel: &mut Offscreen,
+    x: i32,
+    y: i32,
+    total_width: i32,
+    name: &str,
+    value: i32,
+    maximum: i32,
+    bar_color: Color,
+    back_color: Color,
+) {
+    // Calc width of bar
+    let bar_width = (value as f32 / maximum as f32 * total_width as f32) as i32;
+
+    // background
+    panel.set_default_background(back_color);
+    panel.rect(x, y, total_width, 1, false, BackgroundFlag::Screen);
+
+    // render bar on top of background
+    panel.set_default_background(bar_color);
+    if bar_width > 0 {
+        panel.rect(x, y, bar_width, 1, false, BackgroundFlag::Screen);
+    }
+
+    // render text on bar
+    panel.set_default_background(WHITE);
+    panel.print_ex(
+        x + total_width/2,
+        y,
+        BackgroundFlag::None,
+        TextAlignment::Center,
+        &format!("{}: {}/{}", name, value, maximum),
+    );
 }
