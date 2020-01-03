@@ -6,7 +6,9 @@ use tcod::colors::*;
 use tcod::console::*;
 use tcod::map::{FovAlgorithm, Map as FovMap};
 use tcod::input::{self, Event, Key, Mouse};
+
 use rand::Rng;
+use rand::distributions::{IndependentSample, Weighted, WeightedChoice};
 
 use serde::{Deserialize, Serialize};
 
@@ -96,6 +98,7 @@ fn handle_keys(tcod: &mut Tcod, game: &mut Game, objects: &mut Vec<Object>) -> P
         (Key { code: Down, .. }, _, true,) => move_or_attack(0,1, game,objects),
         (Key { code: Left, .. }, _, true,) => move_or_attack(-1,0, game,objects),
         (Key { code: Right, .. }, _, true,) => move_or_attack(1,0, game,objects),
+
 
         (Key { code: Enter, alt: true, .. }, _, _,) =>  { 
             let fullscreen = tcod.root.is_fullscreen();
@@ -537,38 +540,47 @@ fn create_v_tunnel(y1: i32, y2: i32, x: i32, map: &mut Map) {
 }
 
 fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
-    let num_monsters = rand::thread_rng().gen_range(0, MAX_ROOM_MONSTERS + 1);
 
     // Monsters
+    let monster_table = &mut [
+        Weighted { weight: 80, item: "orc", },
+        Weighted { weight: 20, item: "troll", },
+    ];
+    let monster_choice = WeightedChoice::new(monster_table);
+    let num_monsters = rand::thread_rng().gen_range(0, MAX_ROOM_MONSTERS + 1);
     for _ in 0..num_monsters {
         let x = rand::thread_rng().gen_range(room.x1 + 1, room.x2);
         let y = rand::thread_rng().gen_range(room.y1 + 1, room.y2);
 
         if !is_blocked(x, y, map, objects) {
-            let mut monster = if rand::random::<f32>() < 0.8 {
-                let mut orc = Object::new(x,y,'o', "orc", DESATURATED_GREEN, true);
-                orc.fighter = Some(Fighter {
-                    max_hp: 10,
-                    hp: 10,
-                    defense: 0,
-                    power: 3,
-                    xp: 35,
-                    on_death: DeathCallback::Monster,
-                });
-                orc.ai = Some(Ai::Basic);
-                orc
-            } else {
-                let mut troll = Object::new(x,y,'T', "troll", DARKER_GREEN, true);
-                troll.fighter = Some(Fighter {
-                    max_hp: 16,
-                    hp: 16,
-                    defense: 1,
-                    power: 4,
-                    xp: 100,
-                    on_death: DeathCallback::Monster,
-                });
-                troll.ai = Some(Ai::Basic);
-                troll
+            let mut monster = match monster_choice.ind_sample(&mut rand::thread_rng()) {
+                "orc" => {
+                    let mut orc = Object::new(x,y,'o', "orc", DESATURATED_GREEN, true);
+                    orc.fighter = Some(Fighter {
+                        max_hp: 10,
+                        hp: 10,
+                        defense: 0,
+                        power: 3,
+                        xp: 35,
+                        on_death: DeathCallback::Monster,
+                    });
+                    orc.ai = Some(Ai::Basic);
+                    orc
+                }
+                "troll" => {
+                    let mut troll = Object::new(x,y,'T', "troll", DARKER_GREEN, true);
+                    troll.fighter = Some(Fighter {
+                        max_hp: 16,
+                        hp: 16,
+                        defense: 1,
+                        power: 4,
+                        xp: 100,
+                        on_death: DeathCallback::Monster,
+                    });
+                    troll.ai = Some(Ai::Basic);
+                    troll
+                }
+                _ => unreachable!(),
             };
             monster.alive = true;
             objects.push(monster);
@@ -576,6 +588,13 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
     }
 
     // Items
+    let item_table = &mut [
+        Weighted { weight: 70, item: Item::Heal, },
+        Weighted { weight: 10, item: Item::Lightning, },
+        Weighted { weight: 10, item: Item::Fireball, },
+        Weighted { weight: 10, item: Item::Confuse, },
+    ];
+    let item_choice = WeightedChoice::new(item_table);
     let num_items = rand::thread_rng().gen_range(0, MAX_ROOM_ITEMS + 1);
     for _ in 0..num_items {
         // choose random spot in room
@@ -584,28 +603,29 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
 
         // place if the tile isn't blocked
         if !is_blocked(x, y, map, objects) {
-            let dice = rand::random::<f32>();
-            let item = if dice < 0.7 {
-                // 70% chance to create healing potion
-                let mut object = Object::new(x, y, '!', "heading potion", VIOLET, false);
-                object.item = Some(Item::Heal);
-                object
-            } else if dice < (0.7 + 0.1) {
-                // 10% chance to create a lightning bolt scroll
-                let mut object = 
-                    Object::new(x, y,'#',"scroll of lightning bolt",LIGHT_YELLOW,false,);
-                object.item = Some(Item::Lightning);
-                object
-            } else if dice < (0.7 + 0.1 + 0.1) {
-               let mut object = 
-                   Object::new(x,y,'#',"scroll of fireball", LIGHT_YELLOW, false);
-               object.item = Some(Item::Fireball);
-               object
-            } else {
-                // 10% chance for confuse scroll
-                let mut object = Object::new(x, y, '#', "scroll of confusion", LIGHT_YELLOW, false);
-                object.item = Some(Item::Confuse);
-                object
+            let mut item = match item_choice.ind_sample(&mut rand::thread_rng()) {
+                Item::Heal => {
+                    let mut object = Object::new(x, y, '!', "heading potion", VIOLET, false);
+                    object.item = Some(Item::Heal);
+                    object
+                }
+                Item::Lightning => {
+                    let mut object = 
+                        Object::new(x, y,'#',"scroll of lightning bolt",LIGHT_YELLOW,false,);
+                    object.item = Some(Item::Lightning);
+                    object
+                }
+                Item::Fireball => {
+                   let mut object = 
+                       Object::new(x,y,'#',"scroll of fireball", LIGHT_YELLOW, false);
+                   object.item = Some(Item::Fireball);
+                   object
+                }
+                Item::Confuse => {
+                    let mut object = Object::new(x, y, '#', "scroll of confusion", LIGHT_YELLOW, false);
+                    object.item = Some(Item::Confuse);
+                    object
+                }
             };
             objects.push(item);
         }
