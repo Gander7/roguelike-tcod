@@ -161,6 +161,40 @@ fn handle_keys(tcod: &mut Tcod, game: &mut Game, objects: &mut Vec<Object>) -> P
                 msgbox(&msg, CHARACTER_SCREEN_WIDTH, &mut tcod.root);
             }
         }
+        (Key {code: Text, .. }, "h", true) => {
+            let msg = format!(
+                "Controls\n\
+                \n\
+                arrows: move \n\
+                g:      pick up item \n\
+                i:      inventory (press letter to equip/unequip/use) \n\
+                c:      character info \n\
+                d:      drop items \n\
+                Escape: Save and Quit \n\
+                Enter:  Fullscreen \n\
+                <:      go down stairs, when standing on stairs \n\
+                mouse:  hover over objects to see names and target spells \n\
+                \n\
+                Symbols:\n\
+                \n\
+                @: Player\n\
+                <: Stairs\n\
+                o: orc\n\
+                t: troll\n\
+                !: healing potion\n\
+                #: spell scroll (fireball, lightning, or confuse)\n\
+                /: sword\n\
+                [: shield \n\
+                \n\
+                Spells:\n\
+                \n\
+                Fireball: Good damage area 3 spaces from target tile\n\
+                Lightning: Extreme damage to single target\n\
+                Confuse: Confuses single target for set number of turns\n\
+                "
+            );
+            msgbox(&msg, CHARACTER_SCREEN_WIDTH*2, &mut tcod.root);
+        }
         _ => return DidntTakeTurn
     }
     TookTurn
@@ -298,8 +332,16 @@ fn render_all(tcod: &mut Tcod, game: &mut Game, objects: &[Object], fov_recomput
         format!("Dungeon Level: {}", game.dungeon_level),
     );
 
-
     tcod.panel.set_default_foreground(LIGHT_GREY);
+    tcod.panel.print_ex(
+        1,
+        4,
+        BackgroundFlag::None,
+        TextAlignment::Left,
+        format!("Press h for help")
+    );
+
+
     tcod.panel.print_ex(
         1,
         0,
