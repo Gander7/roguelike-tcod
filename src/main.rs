@@ -455,12 +455,7 @@ impl Object {
                 }
             }
             Some(RollResult::CritMiss) => {
-                damage = damage + self.power(game);
-                game.messages.add(format!("{} attacks {} but misses and hurts themselves for {} hit points.", 
-                                            self.name, target.name, damage),WHITE);
-                if let Some(xp) = self.take_damage(damage, game) {
-                    target.fighter.as_mut().unwrap().xp += xp;
-                }
+                game.messages.add(format!("Swing and a miss...."),WHITE);
             }
             None => {
                 if damage > 0 {
@@ -769,10 +764,10 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>, level: u32) {
         level,
     );
     let item_table = &mut [
-        Weighted { weight: 70, item: Item::Heal, },
-        Weighted { item: Item::Lightning, weight: from_dungeon_level(&[Transition { level: 4, value: 15, }], level,)},
+        Weighted { weight: 200, item: Item::Heal, },
+        Weighted { item: Item::Lightning, weight: from_dungeon_level(&[Transition { level: 4, value: 15, }], level,)}, // 4, 15
         Weighted { item: Item::Fireball, weight: from_dungeon_level(&[Transition { level: 6, value: 15, }], level,)},
-        Weighted { item: Item::Confuse, weight: from_dungeon_level(&[Transition { level: 2, value: 25, }], level,)},
+        Weighted { item: Item::Confuse, weight: from_dungeon_level(&[Transition { level: 2, value: 15, }], level,)}, // 2, 25
         Weighted { item: Item::Sword, weight: from_dungeon_level(&[Transition { level: 4, value: 20 }], level, )},
         Weighted { item: Item::Shield, weight: from_dungeon_level(&[Transition { level: 8, value: 25, }], level, )},
     ];
@@ -1236,6 +1231,11 @@ fn cast_lightning (
     // find closest enemy within range
     let monster_id = closest_monster(tcod, objects, LIGHTNING_RANGE);
     if let Some(monster_id) = monster_id {
+        let roll_result = rolld20(); 
+        if roll_result == Some(RollResult::CritMiss)  {
+            game.messages.add(format!("The lightning sizzles, burning up the scroll in your hand."), RED);
+            return UseResult::UsedUp
+        }
         game.messages.add(
             format!(
                 "A lightning bolt strikes the {} with a loud thunder! \
@@ -1246,6 +1246,10 @@ fn cast_lightning (
         );
         if let Some(xp) = objects[monster_id].take_damage(LIGHTNING_DAMAGE, game) {
             objects[PLAYER].fighter.as_mut().unwrap().xp += xp;
+        }
+        if roll_result == Some(RollResult::CritHit) {
+            game.messages.add(format!("Your skill has allowed you to retain the scroll."), GREEN);
+            return UseResult::UsedAndKept
         }
         UseResult::UsedUp
     } else {
@@ -1268,6 +1272,11 @@ fn cast_confuse (
     );
     let monster_id = target_monster(tcod, game, objects, Some(CONFUSE_RANGE as f32));
     if let Some(monster_id) = monster_id {
+        let roll_result = rolld20(); 
+        if roll_result == Some(RollResult::CritMiss)  {
+            game.messages.add(format!("The eyes of {} remain focused on you while the scroll disintegrates in your hand.",objects[monster_id].name), RED);
+            return UseResult::UsedUp
+        }
         let old_ai = objects[monster_id].ai.take().unwrap_or(Ai::Basic);
         objects[monster_id].ai = Some(Ai::Confused {
             previous_ai: Box::new(old_ai),
@@ -1280,6 +1289,10 @@ fn cast_confuse (
             ),
             LIGHT_GREEN,
         );
+        if roll_result == Some(RollResult::CritHit) {
+            game.messages.add(format!("Your skill has allowed you to retain the scroll."), GREEN);
+            return UseResult::UsedAndKept
+        }
         UseResult::UsedUp
     } else {
         game.messages.add("No enemy is close enough to strike.", RED);
