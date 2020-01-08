@@ -35,6 +35,9 @@ const MSG_X: i32 = BAR_WIDTH + 2;
 const MSG_WIDTH: i32 = SCREEN_WIDTH - BAR_WIDTH - 2;
 const MSG_HEIGHT: usize = PANEL_HEIGHT as usize - 1;
 
+const CRIT_HIT_THRESHOLD: i32 = 19;
+const CRIT_MISS_THRESHOLD: i32 = 1;
+
 const INVENTORY_WIDTH: i32 = 50;
 const HEAL_AMOUNT: i32 = 40;
 const LIGHTNING_DAMAGE: i32 = 40;
@@ -440,21 +443,38 @@ impl Object {
     }
 
     pub fn attack(&mut self, target: &mut Object, game: &mut Game) {
-        let damage = self.power(game) - target.defense(game);
-        if damage > 0 {
-            game.messages.add(format!(
-                "{} attacks {} for {} hit points.",
-                self.name, target.name, damage
-            ), WHITE,);
-            if let Some(xp) = target.take_damage(damage, game) {
-                self.fighter.as_mut().unwrap().xp += xp;
+        let mut damage = self.power(game) - target.defense(game);
+
+        match rolld20() {
+            Some(RollResult::CritHit) => {
+                damage = damage + self.power(game); 
+                game.messages.add(format!("{} deals a critical hit to {} for {} hit points.", 
+                                          self.name, target.name, damage),WHITE);
+                if let Some(xp) = target.take_damage(damage, game) {
+                    self.fighter.as_mut().unwrap().xp += xp;
+                }
             }
-        } else {
-            game.messages.add(format!(
-                "{} attacks {} but it has no effect!",
-                self.name, target.name
-            ), WHITE,);
-        }
+            Some(RollResult::CritMiss) => {
+                damage = damage + self.power(game);
+                game.messages.add(format!("{} attacks {} but misses and hurts themselves for {} hit points.", 
+                                            self.name, target.name, damage),WHITE);
+                if let Some(xp) = self.take_damage(damage, game) {
+                    target.fighter.as_mut().unwrap().xp += xp;
+                }
+            }
+            None => {
+                if damage > 0 {
+                    game.messages.add(format!("{} attacks {} for {} hit points.",
+                                              self.name, target.name, damage),WHITE);
+                    if let Some(xp) = target.take_damage(damage, game) {
+                        self.fighter.as_mut().unwrap().xp += xp;
+                    }
+                } else {
+                    game.messages.add(format!("{} attacks {} but it has no effect.",
+                                              self.name, target.name,),WHITE);
+                }
+            }
+        };
     }
 
     pub fn heal(&mut self, amount: i32, game: &Game) {
@@ -1683,6 +1703,23 @@ fn get_equipped_in_slot(slot: Slot, inventory: &[Object]) -> Option<usize> {
         if item.equipment.as_ref().map_or(false , |e| e.equipped && e.slot == slot) {
             return Some(inventory_id);
         }
+    }
+    None
+}
+
+enum RollResult {
+    CritHit,
+    CritMiss,
+}
+fn rolld20() -> Option<RollResult> {
+    use RollResult::*;
+
+    let res:i32 = rand::thread_rng().gen_range(1, 21);
+    if res <= CRIT_MISS_THRESHOLD {
+         return Some(CritHit);
+    } 
+    if res >= CRIT_HIT_THRESHOLD {
+         return Some(CritMiss);
     }
     None
 }
