@@ -770,11 +770,11 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>, level: u32) {
     );
     let item_table = &mut [
         Weighted { weight: 70, item: Item::Heal, },
-        Weighted { item: Item::Lightning, weight: from_dungeon_level(&[Transition { level: 4, value: 25, }], level,)},
-        Weighted { item: Item::Fireball, weight: from_dungeon_level(&[Transition { level: 6, value: 25, }], level,)},
-        Weighted { item: Item::Confuse, weight: from_dungeon_level(&[Transition { level: 2, value: 10, }], level,)},
-        Weighted { item: Item::Sword, weight: from_dungeon_level(&[Transition { level: 4, value: 5 }], level, )},
-        Weighted { item: Item::Shield, weight: from_dungeon_level(&[Transition { level: 8, value: 15, }], level, )},
+        Weighted { item: Item::Lightning, weight: from_dungeon_level(&[Transition { level: 4, value: 15, }], level,)},
+        Weighted { item: Item::Fireball, weight: from_dungeon_level(&[Transition { level: 6, value: 15, }], level,)},
+        Weighted { item: Item::Confuse, weight: from_dungeon_level(&[Transition { level: 2, value: 25, }], level,)},
+        Weighted { item: Item::Sword, weight: from_dungeon_level(&[Transition { level: 4, value: 20 }], level, )},
+        Weighted { item: Item::Shield, weight: from_dungeon_level(&[Transition { level: 8, value: 25, }], level, )},
     ];
     let item_choice = WeightedChoice::new(item_table);
     let num_items = rand::thread_rng().gen_range(0, max_items_per_room + 1);
@@ -899,7 +899,7 @@ fn ai_take_turn(monster_id: usize, tcod: &Tcod, game: &mut Game, objects: &mut [
 fn ai_basic(monster_id: usize, tcod: &Tcod, game: &mut Game, objects: &mut [Object]) -> Ai {
     let (monster_x, monster_y) = objects[monster_id].pos();
     if tcod.fov.is_in_fov(monster_x, monster_y) {
-        if objects[monster_id].distance_to(&objects[PLAYER]) > 1.0 {
+        if objects[monster_id].distance_to(&objects[PLAYER]) > 2.0 {
             // move towards player if far away
             let (player_x, player_y) = objects[PLAYER].pos();
             move_towards(monster_id, player_x, player_y, &game.map, objects);
