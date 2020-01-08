@@ -1301,6 +1301,13 @@ fn cast_fireball(
         Some(tile_pos) => tile_pos,
         None => return UseResult::Cancelled,
     };
+
+    let roll_result = rolld20(); 
+    if roll_result == Some(RollResult::CritMiss)  {
+        game.messages.add(format!("The fireball fizzles, burning up the scroll in your hand."), RED);
+        return UseResult::UsedUp
+    }
+
     game.messages.add(
         format!(
             "The fireball explodes, burning everything within {} tiles!",
@@ -1308,7 +1315,7 @@ fn cast_fireball(
         ),
         ORANGE,
     );
-    
+
     let mut xp_to_gain = 0;
     for (id, obj) in objects.iter_mut().enumerate() {
         if obj.distance(x,y) <= FIREBALL_RADIUS as f32 && obj.fighter.is_some() {
@@ -1327,6 +1334,10 @@ fn cast_fireball(
         }
     }
     objects[PLAYER].fighter.as_mut().unwrap().xp += xp_to_gain;
+    if roll_result == Some(RollResult::CritHit) {
+        game.messages.add(format!("Your skill has allowed you to retain the scroll."), GREEN);
+        return UseResult::UsedAndKept
+    }
     UseResult::UsedUp
 }
 
@@ -1707,6 +1718,7 @@ fn get_equipped_in_slot(slot: Slot, inventory: &[Object]) -> Option<usize> {
     None
 }
 
+#[derive(PartialEq)]
 enum RollResult {
     CritHit,
     CritMiss,
@@ -1716,10 +1728,10 @@ fn rolld20() -> Option<RollResult> {
 
     let res:i32 = rand::thread_rng().gen_range(1, 21);
     if res <= CRIT_MISS_THRESHOLD {
-         return Some(CritHit);
+         return Some(CritMiss);
     } 
     if res >= CRIT_HIT_THRESHOLD {
-         return Some(CritMiss);
+         return Some(CritHit);
     }
     None
 }
