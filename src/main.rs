@@ -85,7 +85,7 @@ fn main() {
     main_menu(&mut tcod);
 }
 
-fn handle_keys(tcod: &mut Tcod, game: &mut Game, objects: &mut Vec<Object>) -> PlayerAction {
+fn handle_keys(tcod: &mut Tcod, game: &mut Game, objects: &mut Vec<Object>, popup_displayed: &mut bool) -> PlayerAction {
     use tcod::input::KeyCode::*;
     use PlayerAction::*;
 
@@ -120,6 +120,7 @@ fn handle_keys(tcod: &mut Tcod, game: &mut Game, objects: &mut Vec<Object>) -> P
             if let Some(inventory_index) = inventory_index {
                 use_item(inventory_index, tcod, game, objects);
             };
+            *popup_displayed = true;
             return DidntTakeTurn
         },
         (Key {code: Text, .. }, "d", true) => {
@@ -131,6 +132,7 @@ fn handle_keys(tcod: &mut Tcod, game: &mut Game, objects: &mut Vec<Object>) -> P
             if let Some(inventory_index) = inventory_index {
                 drop_item(inventory_index, game, objects);
             }
+            *popup_displayed = true;
             return DidntTakeTurn
         }
         (Key {code: Text, .. }, "<", true) => {
@@ -159,6 +161,7 @@ fn handle_keys(tcod: &mut Tcod, game: &mut Game, objects: &mut Vec<Object>) -> P
                     level, fighter.xp, level_up_xp, fighter.hp, player.max_hp(game), player.power(game), player.defense(game)
                 );
                 msgbox(&msg, CHARACTER_SCREEN_WIDTH, &mut tcod.root);
+                *popup_displayed = true;
             }
         }
         (Key {code: Text, .. }, "h", true) => {
@@ -194,6 +197,7 @@ fn handle_keys(tcod: &mut Tcod, game: &mut Game, objects: &mut Vec<Object>) -> P
                 "
             );
             msgbox(&msg, CHARACTER_SCREEN_WIDTH*2, &mut tcod.root);
+            *popup_displayed = true;
         }
         _ => return DidntTakeTurn
     }
@@ -763,7 +767,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>, level: u32) {
         if !is_blocked(x, y, map, objects) {
             let item = match item_choice.ind_sample(&mut rand::thread_rng()) {
                 Item::Heal => {
-                    let mut object = Object::new(x, y, '!', "heading potion", VIOLET, false);
+                    let mut object = Object::new(x, y, '!', "healing potion", VIOLET, false);
                     object.item = Some(Item::Heal);
                     object
                 }
@@ -1111,7 +1115,6 @@ fn menu<T: AsRef<str>>(header: &str, options: &[T], width: i32, root: &mut Root)
 
     root.flush();
     let key = root.wait_for_keypress(true);
-
     if key.printable.is_alphabetic() {
         let index = key.printable.to_ascii_lowercase() as usize - 'a' as usize;
         if index < options.len() {
@@ -1442,6 +1445,7 @@ fn play_game(tcod: &mut Tcod, game: &mut Game, objects: &mut Vec<Object>) {
     // force fov "recompute" first time through the game loop
     let mut previous_player_position = (-1, -1);
 
+    let mut popup_displayed: bool = false;
     while !tcod.root.window_closed() {
         tcod.con.clear();
 
@@ -1455,20 +1459,24 @@ fn play_game(tcod: &mut Tcod, game: &mut Game, objects: &mut Vec<Object>) {
         render_all(tcod, game, &objects, fov_recompute);
 
         tcod.root.flush();
+        
+        if popup_displayed {
+            popup_displayed = false
+        } 
+        else {
+            level_up(tcod, game, objects, &mut popup_displayed);
+            previous_player_position = objects[PLAYER].pos(); 
+            let player_action = handle_keys(tcod, game, objects, &mut popup_displayed);
+            if player_action == PlayerAction::Exit {
+                save_game(game, objects).unwrap();
+                break;
+            }
 
-        level_up(tcod, game, objects);
-
-        previous_player_position = objects[PLAYER].pos(); 
-        let player_action = handle_keys(tcod, game, objects);
-        if player_action == PlayerAction::Exit {
-            save_game(game, objects).unwrap();
-            break;
-        }
-
-        if objects[PLAYER].alive && player_action != PlayerAction::DidntTakeTurn {
-            for id in 0..objects.len() {
-                if objects[id].ai.is_some() {
-                    ai_take_turn(id, tcod, game, objects);
+            if objects[PLAYER].alive && player_action != PlayerAction::DidntTakeTurn {
+                for id in 0..objects.len() {
+                    if objects[id].ai.is_some() {
+                        ai_take_turn(id, tcod, game, objects);
+                    }
                 }
             }
         }
@@ -1569,7 +1577,7 @@ fn next_level(tcod: &mut Tcod, game: &mut Game, objects: &mut Vec<Object>) {
     game.map = generate_map(objects,game.dungeon_level);
     init_fov(tcod, &game.map);
 }
-fn level_up(tcod: &mut Tcod, game: &mut Game, objects: &mut [Object]) {
+fn level_up(tcod: &mut Tcod, game: &mut Game, objects: &mut [Object], popup_displayed: &mut bool) {
     let player = &mut objects[PLAYER];
     let level_up_xp = LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR;
 
@@ -1578,7 +1586,7 @@ fn level_up(tcod: &mut Tcod, game: &mut Game, objects: &mut [Object]) {
         player.level += 1;
         game.messages.add(
             format!(
-                "You battle skills grow strong! You reached leve {}!",
+                "You battle skills grow strong! You reached level {}!",
                 player.level
             ),
             YELLOW,
@@ -1612,6 +1620,7 @@ fn level_up(tcod: &mut Tcod, game: &mut Game, objects: &mut [Object]) {
             }
             _ => unreachable!(),
         }
+        *popup_displayed = true;
     }
 }
 struct Transition {
