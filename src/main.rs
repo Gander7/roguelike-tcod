@@ -35,6 +35,9 @@ const MSG_X: i32 = BAR_WIDTH + 2;
 const MSG_WIDTH: i32 = SCREEN_WIDTH - BAR_WIDTH - 2;
 const MSG_HEIGHT: usize = PANEL_HEIGHT as usize - 1;
 
+const CRIT_HIT_THRESHOLD: i32 = 19;
+const CRIT_MISS_THRESHOLD: i32 = 1;
+
 const INVENTORY_WIDTH: i32 = 50;
 const HEAL_AMOUNT: i32 = 40;
 const LIGHTNING_DAMAGE: i32 = 40;
@@ -440,21 +443,33 @@ impl Object {
     }
 
     pub fn attack(&mut self, target: &mut Object, game: &mut Game) {
-        let damage = self.power(game) - target.defense(game);
-        if damage > 0 {
-            game.messages.add(format!(
-                "{} attacks {} for {} hit points.",
-                self.name, target.name, damage
-            ), WHITE,);
-            if let Some(xp) = target.take_damage(damage, game) {
-                self.fighter.as_mut().unwrap().xp += xp;
+        let mut damage = self.power(game) - target.defense(game);
+
+        match rolld20() {
+            Some(RollResult::CritHit) => {
+                damage = damage + self.power(game); 
+                game.messages.add(format!("{} deals a critical hit to {} for {} hit points.", 
+                                          self.name, target.name, damage),WHITE);
+                if let Some(xp) = target.take_damage(damage, game) {
+                    self.fighter.as_mut().unwrap().xp += xp;
+                }
             }
-        } else {
-            game.messages.add(format!(
-                "{} attacks {} but it has no effect!",
-                self.name, target.name
-            ), WHITE,);
-        }
+            Some(RollResult::CritMiss) => {
+                game.messages.add(format!("Swing and a miss...."),WHITE);
+            }
+            None => {
+                if damage > 0 {
+                    game.messages.add(format!("{} attacks {} for {} hit points.",
+                                              self.name, target.name, damage),WHITE);
+                    if let Some(xp) = target.take_damage(damage, game) {
+                        self.fighter.as_mut().unwrap().xp += xp;
+                    }
+                } else {
+                    game.messages.add(format!("{} attacks {} but it has no effect.",
+                                              self.name, target.name,),WHITE);
+                }
+            }
+        };
     }
 
     pub fn heal(&mut self, amount: i32, game: &Game) {
@@ -749,12 +764,12 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>, level: u32) {
         level,
     );
     let item_table = &mut [
-        Weighted { weight: 70, item: Item::Heal, },
-        Weighted { item: Item::Lightning, weight: from_dungeon_level(&[Transition { level: 4, value: 25, }], level,)},
-        Weighted { item: Item::Fireball, weight: from_dungeon_level(&[Transition { level: 6, value: 25, }], level,)},
-        Weighted { item: Item::Confuse, weight: from_dungeon_level(&[Transition { level: 2, value: 10, }], level,)},
-        Weighted { item: Item::Sword, weight: from_dungeon_level(&[Transition { level: 4, value: 5 }], level, )},
-        Weighted { item: Item::Shield, weight: from_dungeon_level(&[Transition { level: 8, value: 15, }], level, )},
+        Weighted { weight: 200, item: Item::Heal, },
+        Weighted { item: Item::Lightning, weight: from_dungeon_level(&[Transition { level: 4, value: 15, }], level,)}, // 4, 15
+        Weighted { item: Item::Fireball, weight: from_dungeon_level(&[Transition { level: 6, value: 15, }], level,)},
+        Weighted { item: Item::Confuse, weight: from_dungeon_level(&[Transition { level: 2, value: 15, }], level,)}, // 2, 25
+        Weighted { item: Item::Sword, weight: from_dungeon_level(&[Transition { level: 4, value: 20 }], level, )},
+        Weighted { item: Item::Shield, weight: from_dungeon_level(&[Transition { level: 8, value: 25, }], level, )},
     ];
     let item_choice = WeightedChoice::new(item_table);
     let num_items = rand::thread_rng().gen_range(0, max_items_per_room + 1);
@@ -879,7 +894,7 @@ fn ai_take_turn(monster_id: usize, tcod: &Tcod, game: &mut Game, objects: &mut [
 fn ai_basic(monster_id: usize, tcod: &Tcod, game: &mut Game, objects: &mut [Object]) -> Ai {
     let (monster_x, monster_y) = objects[monster_id].pos();
     if tcod.fov.is_in_fov(monster_x, monster_y) {
-        if objects[monster_id].distance_to(&objects[PLAYER]) > 1.0 {
+        if objects[monster_id].distance_to(&objects[PLAYER]) > 2.0 {
             // move towards player if far away
             let (player_x, player_y) = objects[PLAYER].pos();
             move_towards(monster_id, player_x, player_y, &game.map, objects);
@@ -1216,6 +1231,11 @@ fn cast_lightning (
     // find closest enemy within range
     let monster_id = closest_monster(tcod, objects, LIGHTNING_RANGE);
     if let Some(monster_id) = monster_id {
+        let roll_result = rolld20(); 
+        if roll_result == Some(RollResult::CritMiss)  {
+            game.messages.add(format!("The lightning sizzles, burning up the scroll in your hand."), RED);
+            return UseResult::UsedUp
+        }
         game.messages.add(
             format!(
                 "A lightning bolt strikes the {} with a loud thunder! \
@@ -1226,6 +1246,10 @@ fn cast_lightning (
         );
         if let Some(xp) = objects[monster_id].take_damage(LIGHTNING_DAMAGE, game) {
             objects[PLAYER].fighter.as_mut().unwrap().xp += xp;
+        }
+        if roll_result == Some(RollResult::CritHit) {
+            game.messages.add(format!("Your skill has allowed you to retain the scroll."), GREEN);
+            return UseResult::UsedAndKept
         }
         UseResult::UsedUp
     } else {
@@ -1248,6 +1272,11 @@ fn cast_confuse (
     );
     let monster_id = target_monster(tcod, game, objects, Some(CONFUSE_RANGE as f32));
     if let Some(monster_id) = monster_id {
+        let roll_result = rolld20(); 
+        if roll_result == Some(RollResult::CritMiss)  {
+            game.messages.add(format!("The eyes of {} remain focused on you while the scroll disintegrates in your hand.",objects[monster_id].name), RED);
+            return UseResult::UsedUp
+        }
         let old_ai = objects[monster_id].ai.take().unwrap_or(Ai::Basic);
         objects[monster_id].ai = Some(Ai::Confused {
             previous_ai: Box::new(old_ai),
@@ -1260,6 +1289,10 @@ fn cast_confuse (
             ),
             LIGHT_GREEN,
         );
+        if roll_result == Some(RollResult::CritHit) {
+            game.messages.add(format!("Your skill has allowed you to retain the scroll."), GREEN);
+            return UseResult::UsedAndKept
+        }
         UseResult::UsedUp
     } else {
         game.messages.add("No enemy is close enough to strike.", RED);
@@ -1281,6 +1314,13 @@ fn cast_fireball(
         Some(tile_pos) => tile_pos,
         None => return UseResult::Cancelled,
     };
+
+    let roll_result = rolld20(); 
+    if roll_result == Some(RollResult::CritMiss)  {
+        game.messages.add(format!("The fireball fizzles, burning up the scroll in your hand."), RED);
+        return UseResult::UsedUp
+    }
+
     game.messages.add(
         format!(
             "The fireball explodes, burning everything within {} tiles!",
@@ -1288,7 +1328,7 @@ fn cast_fireball(
         ),
         ORANGE,
     );
-    
+
     let mut xp_to_gain = 0;
     for (id, obj) in objects.iter_mut().enumerate() {
         if obj.distance(x,y) <= FIREBALL_RADIUS as f32 && obj.fighter.is_some() {
@@ -1307,6 +1347,10 @@ fn cast_fireball(
         }
     }
     objects[PLAYER].fighter.as_mut().unwrap().xp += xp_to_gain;
+    if roll_result == Some(RollResult::CritHit) {
+        game.messages.add(format!("Your skill has allowed you to retain the scroll."), GREEN);
+        return UseResult::UsedAndKept
+    }
     UseResult::UsedUp
 }
 
@@ -1683,6 +1727,24 @@ fn get_equipped_in_slot(slot: Slot, inventory: &[Object]) -> Option<usize> {
         if item.equipment.as_ref().map_or(false , |e| e.equipped && e.slot == slot) {
             return Some(inventory_id);
         }
+    }
+    None
+}
+
+#[derive(PartialEq)]
+enum RollResult {
+    CritHit,
+    CritMiss,
+}
+fn rolld20() -> Option<RollResult> {
+    use RollResult::*;
+
+    let res:i32 = rand::thread_rng().gen_range(1, 21);
+    if res <= CRIT_MISS_THRESHOLD {
+         return Some(CritMiss);
+    } 
+    if res >= CRIT_HIT_THRESHOLD {
+         return Some(CritHit);
     }
     None
 }
